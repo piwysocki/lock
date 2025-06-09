@@ -8,12 +8,18 @@ const RECAPTCHA_V2_PROVIDER = 'recaptcha_v2';
 const RECAPTCHA_ENTERPRISE_PROVIDER = 'recaptcha_enterprise';
 const HCAPTCHA_PROVIDER = 'hcaptcha';
 const FRIENDLY_CAPTCHA_PROVIDER = 'friendly_captcha';
+const ARKOSE_PROVIDER = 'arkose';
+const AUTH0_V2_CAPTCHA_PROVIDER = 'auth0_v2';
+const TIMEOUT_MS = 500;
+const MAX_RETRY = 3;
 
 export const isThirdPartyCaptcha = provider =>
   provider === RECAPTCHA_ENTERPRISE_PROVIDER
   || provider === RECAPTCHA_V2_PROVIDER
   || provider === HCAPTCHA_PROVIDER
-  || provider === FRIENDLY_CAPTCHA_PROVIDER;
+  || provider === FRIENDLY_CAPTCHA_PROVIDER
+  || provider === ARKOSE_PROVIDER
+  || provider === AUTH0_V2_CAPTCHA_PROVIDER;
 
 const getCaptchaProvider = provider => {
   switch (provider) {
@@ -25,10 +31,14 @@ const getCaptchaProvider = provider => {
       return window.hcaptcha;
     case FRIENDLY_CAPTCHA_PROVIDER:
       return window.friendlyChallenge;
+    case ARKOSE_PROVIDER:
+      return window.arkose;
+    case AUTH0_V2_CAPTCHA_PROVIDER:
+      return window.turnstile;
   }
 };
 
-const scriptForProvider = (provider, lang, callback) => {
+const scriptForProvider = (provider, lang, callback, clientSubdomain, siteKey) => {
   switch (provider) {
     case RECAPTCHA_V2_PROVIDER:
       return `https://www.recaptcha.net/recaptcha/api.js?hl=${lang}&onload=${callback}`;
@@ -38,6 +48,10 @@ const scriptForProvider = (provider, lang, callback) => {
       return `https://js.hcaptcha.com/1/api.js?hl=${lang}&onload=${callback}`;
     case FRIENDLY_CAPTCHA_PROVIDER:
       return 'https://cdn.jsdelivr.net/npm/friendly-challenge@0.9.12/widget.min.js';
+    case ARKOSE_PROVIDER:
+      return 'https://' + clientSubdomain + '.arkoselabs.com/v2/' + siteKey + '/api.js';
+    case AUTH0_V2_CAPTCHA_PROVIDER:
+      return `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=${callback}`;
   }
 };
 
@@ -51,13 +65,49 @@ const providerDomPrefix = (provider) => {
       return 'hcaptcha';
     case FRIENDLY_CAPTCHA_PROVIDER:
       return 'friendly-captcha';
+    case ARKOSE_PROVIDER:
+      return 'arkose';
+    case AUTH0_V2_CAPTCHA_PROVIDER:
+      return 'auth0-v2';
   }
-}
+};
+
+const providerComponentId = (provider) => {
+  if (provider === HCAPTCHA_PROVIDER) {
+    return 'h-captcha';
+  } else {
+    return '';
+  }
+};
+
+const loadScript = (url, attributes) => {
+  var script = document.createElement('script');
+  for (var attr in attributes) {
+    if (attr.startsWith('data-')) {
+      script.dataset[attr.replace('data-', '')] = attributes[attr];
+    } else {
+      script[attr] = attributes[attr];
+    }
+  }
+  script.src = url;
+  document.body.appendChild(script);
+};
+
+const removeScript = (url) => {
+  var scripts = document.body.querySelectorAll('script[src="' + url + '"]');
+  scripts.forEach((script) => {
+    script.remove();
+  });
+};
 
 export class ThirdPartyCaptcha extends React.Component {
+
   constructor(props) {
     super(props);
-    this.state = {};
+    this.state = {
+      retryCount: 0,
+      scriptUrl: ''
+    };
     //this version of react doesn't have React.createRef
     this.ref = createRef();
 
@@ -81,56 +131,129 @@ export class ThirdPartyCaptcha extends React.Component {
         this.props.onChange(value);
         this.props.onErrored();
       });
-    };
+    };  
   }
 
-  static loadScript(props, element = document.body, callback = noop) {
-    const callbackName = `${providerDomPrefix(props.provider)}Callback_${Math.floor(Math.random() * 1000001)}`;
-    const scriptUrl = scriptForProvider(props.provider, props.hl, callbackName);
-    const script = document.createElement('script');
+  getRenderParams() {
 
-    window[callbackName] = () => {
-      delete window[callbackName];
-      callback(null, script);
+
+    if (this.props.provider === FRIENDLY_CAPTCHA_PROVIDER) {
+      return {
+        sitekey: this.props.sitekey,
+        language: this.props.hl,
+        doneCallback: this.changeHandler,
+        errorCallback: this.erroredHandler
+      };
+    }
+    let renderParams = {
+      sitekey: this.props.sitekey,
+      callback: this.changeHandler,
+      'expired-callback': this.expiredHandler,
+      'error-callback': this.erroredHandler
     };
 
-    script.src = scriptUrl;
-    script.async = true;
-    script.defer = true;
-    if (props.provider === FRIENDLY_CAPTCHA_PROVIDER) {
-      script.onload = window[callbackName];
+    if (this.props.provider === AUTH0_V2_CAPTCHA_PROVIDER) {
+      renderParams = {
+        ...renderParams,
+        language: this.props.hl,
+        theme: 'light',
+        retry: 'never',
+        'response-field': false,
+        'error-callback': () => {
+          if (this.state.retryCount < MAX_RETRY) {
+            getCaptchaProvider(this.props.provider).reset(this.widgetId);
+            this.setState(prevState => ({
+              retryCount: prevState.retryCount + 1
+            }));
+          } else {
+            // similar implementation to ARKOSE_PROVIDER failOpen
+            this.changeHandler('BYPASS_CAPTCHA');
+          }
+          return true;
+        }
+      };
+    }
+    return renderParams;
+  }
+  
+  injectCaptchaScript(callback = noop) {
+    const { provider, hl, clientSubdomain, sitekey } = this.props;
+    const callbackName = `${providerDomPrefix(provider)}Callback_${Math.floor(Math.random() * 1000001)}`;
+    const scriptUrl = scriptForProvider(provider, hl, callbackName, clientSubdomain, sitekey);
+    this.setState({ scriptUrl });
+    const attributes = {
+      async: true,
+      defer: true
+    };
+    if (provider === ARKOSE_PROVIDER || provider === AUTH0_V2_CAPTCHA_PROVIDER) {
+      attributes['data-callback'] = callbackName;
+      attributes['onerror'] = () => {
+        if (this.state.retryCount < MAX_RETRY) {
+          removeScript(scriptUrl);
+          loadScript(scriptUrl, attributes);
+          this.setState(prevState => ({
+            retryCount: prevState.retryCount + 1
+          }));
+          return;
+        }
+        removeScript(scriptUrl);
+        this.changeHandler('BYPASS_CAPTCHA');
+      };
+      window[callbackName] = arkose => {
+        callback(arkose);
+      };
+    } else {
+      window[callbackName] = () => {
+        delete window[callbackName];
+        callback();
+      };
+
+      if (provider === FRIENDLY_CAPTCHA_PROVIDER) {
+        attributes['onload'] = window[callbackName];
+      }
     }
 
-    element.appendChild(script);
+    loadScript(scriptUrl, attributes);
   }
 
   componentWillUnmount() {
-    if (!this.scriptNode) {
+    if (!this.state.scriptUrl) {
       return;
     }
-    document.body.removeChild(this.scriptNode);
+    removeScript(this.state.scriptUrl);
   }
 
   componentDidMount() {
-    ThirdPartyCaptcha.loadScript(this.props, document.body, (err, scriptNode) => {
-      this.scriptNode = scriptNode;
+    this.injectCaptchaScript((arkose) => {
       const provider = getCaptchaProvider(this.props.provider);
-
-      if (this.props.provider === FRIENDLY_CAPTCHA_PROVIDER) {
-        this.widgetInstance = new provider.WidgetInstance(this.ref.current, {
-          sitekey: this.props.sitekey,
-          language: this.props.hl,
-          doneCallback: this.changeHandler,
-          errorCallback: this.erroredHandler,
+      if (this.props.provider === ARKOSE_PROVIDER) {
+        arkose.setConfig({
+          onReady: () => {
+            arkose.run();
+          },
+          onCompleted: (response) => {
+            this.changeHandler(response.token);
+          },
+          onError: () => {
+            if (this.state.retryCount < MAX_RETRY) {
+              arkose.reset();
+              // To ensure reset is successful, we need to set a timeout here
+              setTimeout(() => {
+                arkose.run();
+              }, TIMEOUT_MS);
+              this.setState((prevState) => ({
+                retryCount: prevState.retryCount + 1
+              }));
+            } else {
+              this.changeHandler('BYPASS_CAPTCHA');
+            }
+          }
         });
+      } else if (this.props.provider === FRIENDLY_CAPTCHA_PROVIDER) {
+        this.widgetInstance = new provider.WidgetInstance(this.ref.current, this.getRenderParams());
       } else {
         // if this is enterprise then we change this to window.grecaptcha.enterprise.render
-        this.widgetId = provider.render(this.ref.current, {
-          callback: this.changeHandler,
-          'expired-callback': this.expiredHandler,
-          'error-callback': this.erroredHandler,
-          sitekey: this.props.sitekey
-        });
+        this.widgetId = provider.render(this.ref.current, this.getRenderParams());
       }
     });
   }
@@ -145,6 +268,7 @@ export class ThirdPartyCaptcha extends React.Component {
       provider.reset(this.widgetId);
     }
   }
+
   render() {
     /*
       This is an override for the following conflicting css-rule:
@@ -186,7 +310,7 @@ export class ThirdPartyCaptcha extends React.Component {
             : `auth0-lock-${providerDomPrefix(this.props.provider)}-block auth0-lock-${providerDomPrefix(this.props.provider)}-block-error`
         }
       >
-        <div className={`auth0-lock-${providerDomPrefix(this.props.provider) === 'recaptcha' ? 'recaptchav2' : providerDomPrefix(this.props.provider)}`} ref={this.ref} />
+        <div className={`auth0-lock-${providerDomPrefix(this.props.provider) === 'recaptcha' ? 'recaptchav2' : providerDomPrefix(this.props.provider)}`} id={providerComponentId(this.props.provider)} ref={this.ref} />
       </div>
     );
   }
@@ -200,8 +324,12 @@ export class ThirdPartyCaptcha extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    let hCaptchaComponent = document.getElementById("h-captcha");
     if (prevProps.value !== this.props.value && this.props.value === '') {
       this.reset();
+    }
+    if (this.props.provider === HCAPTCHA_PROVIDER && hCaptchaComponent && window[this.props.provider]) {
+      window[this.props.provider].render('h-captcha', this.getRenderParams());
     }
   }
 }
@@ -212,6 +340,7 @@ ThirdPartyCaptcha.displayName = 'ThirdPartyCaptcha';
 ThirdPartyCaptcha.propTypes = {
   provider: propTypes.string.isRequired,
   sitekey: propTypes.string.isRequired,
+  clientSubdomain: propTypes.string,
   onChange: propTypes.func,
   onExpired: propTypes.func,
   onErrored: propTypes.func,

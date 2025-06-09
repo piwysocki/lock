@@ -60,8 +60,16 @@ class Auth0WebAPI {
     return this.clients[lockID].getChallenge(callback);
   }
 
+  getSignupChallenge(lockID, callback) {
+    return this.clients[lockID].getSignupChallenge(callback);
+  }
+
   getPasswordlessChallenge(lockID, callback) {
     return this.clients[lockID].getPasswordlessChallenge(callback);
+  }
+
+  getPasswordResetChallenge(lockID, callback) {
+    return this.clients[lockID].getPasswordResetChallenge(callback);
   }
 
   getSSOData(lockID, ...args) {

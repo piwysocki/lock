@@ -6,11 +6,11 @@ import CaptchaPane from '../../field/captcha/captcha_pane';
 import { ThirdPartyCaptcha } from '../../field/captcha/third_party_captcha';
 import CaptchaInput from '../../ui/input/captcha_input';
 
-const createLockMock = ({ provider = 'auth0', required = true, siteKey = '' } = {}) =>
+const createLockMock = ({ provider = 'auth0', required = true, siteKey = '', clientSubdomain = '' } = {}) =>
   I.fromJS({
     id: '__lock-id__',
     core: {
-      captcha: { provider, siteKey, required: required }
+      captcha: { provider, siteKey, clientSubdomain, required: required }
     }
   });
 
@@ -100,6 +100,28 @@ describe('CaptchaPane', () => {
     });
   });
 
+  describe('auth0_v2', () => {
+    let wrapper;
+    beforeAll(() => {
+      const lockMock = createLockMock({
+        provider: 'auth0_v2',
+        siteKey: 'mySiteKey'
+      });
+      const i8nMock = createI18nMock();
+      const onReloadMock = jest.fn();
+
+      wrapper = mount(<CaptchaPane lock={lockMock} onReload={onReloadMock} i18n={i8nMock} />);
+    });
+
+    it('should render ThirdPartyCaptcha if provider is auth0_v2', () => {
+      expect(wrapper.find(ThirdPartyCaptcha)).toHaveLength(1);
+    });
+
+    it('should pass the sitekey', () => {
+      expect(wrapper.find(ThirdPartyCaptcha).props().sitekey).toBe('mySiteKey');
+    });
+  });
+
   describe('recaptcha enterprise', () => {
     let wrapper;
     beforeAll(() => {
@@ -119,6 +141,33 @@ describe('CaptchaPane', () => {
 
     it('should pass the sitekey', () => {
       expect(wrapper.find(ThirdPartyCaptcha).props().sitekey).toBe('mySiteKey');
+    });
+  });
+
+  describe('Arkose', () => {
+    let wrapper;
+    beforeAll(() => {
+      const lockMock = createLockMock({
+        provider: 'arkose',
+        siteKey: 'mySiteKey',
+        clientSubdomain:'client-api'
+      });
+      const i8nMock = createI18nMock();
+      const onReloadMock = jest.fn();
+
+      wrapper = mount(<CaptchaPane lock={lockMock} onReload={onReloadMock} i18n={i8nMock} />);
+    });
+
+    it('should render ThirdPartyCaptcha if provider is Arkose', () => {
+      expect(wrapper.find(ThirdPartyCaptcha)).toHaveLength(1);
+    });
+
+    it('should pass the sitekey', () => {
+      expect(wrapper.find(ThirdPartyCaptcha).props().sitekey).toBe('mySiteKey');
+    });
+
+    it('should pass the clientSubdomain', () => {
+      expect(wrapper.find(ThirdPartyCaptcha).props().clientSubdomain).toBe('client-api');
     });
   });
 });

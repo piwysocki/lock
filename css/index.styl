@@ -491,6 +491,14 @@ loadingSize = 30px
     span
       display block
       margin-left 20px
+    .auth0-lock-input-wrap
+      background #ffffff
+      border 1px solid #ffffff
+  .auth0-lock-input-checkbox.auth0-lock-error
+    .auth0-lock-input-wrap span.no-hint
+        color red
+    .auth0-lock-error-invalid-hint
+      margin-left 20px
 
   // Social
 
@@ -1402,6 +1410,18 @@ loadingSize = 30px
     border: 1px solid red;
 
   .auth0-lock-hcaptcha
+    transform: scale(0.855);
+    transform-origin: 0px 0px;
+    position: relative;
+
+.auth0-lock-auth0-v2-block
+  border-radius: 4px;
+  height: 65px;
+
+  &.auth0-lock-auth0-v2-block-error
+    border: 1px solid red;
+
+  .auth0-lock-auth0-v2
     transform: scale(0.855);
     transform-origin: 0px 0px;
     position: relative;

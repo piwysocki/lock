@@ -2,7 +2,7 @@
 ![Release](https://img.shields.io/npm/v/auth0-lock)
 ![Downloads](https://img.shields.io/npm/dw/auth0-lock)
 [![License](https://img.shields.io/:license-mit-blue.svg?style=flat)](https://opensource.org/licenses/MIT)
-![CircleCI](https://img.shields.io/circleci/build/github/auth0/lock)
+[![Build Status](https://github.com/auth0/lock/actions/workflows/test.yml/badge.svg)](https://github.com/auth0/lock/actions/workflows/test.yml)
 
 > :warning: Lock is built using React 18 from v12 onwards. Getting issues? Please [submit a bug report](https://github.com/auth0/lock/issues/new?assignees=&labels=bug+report,v12&template=report_a_bug.md&title=).
 
@@ -16,7 +16,7 @@
 
 ### Browser Compatibility
 
-We ensure browser compatibility in Chrome, Safari, Firefox and IE >= 11.
+We ensure browser compatibility in Chrome, Safari, Firefox.
 
 ### Installation
 
@@ -30,8 +30,9 @@ From CDN
 
 ```html
 <!-- Latest patch release (recommended for production) -->
-<script src="https://cdn.auth0.com/js/lock/12.1.0/lock.min.js"></script>
+<script src="https://cdn.auth0.com/js/lock/14.0.0/lock.min.js"></script>
 ```
+
 ### Configure Auth0
 
 Create a **Single Page Application** in the [Auth0 Dashboard](https://manage.auth0.com/#/applications).
@@ -39,7 +40,6 @@ Create a **Single Page Application** in the [Auth0 Dashboard](https://manage.aut
 > **If you're using an existing application**, verify that you have configured the following settings in your Single Page Application:
 >
 > - Click on the "Settings" tab of your application's page.
-> - Ensure that "Token Endpoint Authentication Method" under "Application Properties" is set to "None"
 > - Scroll down and click on the "Show Advanced Settings" link.
 > - Under "Advanced Settings", click on the "OAuth" tab.
 > - Ensure that "JsonWebToken Signature Algorithm" is set to `RS256` and that "OIDC Conformant" is enabled.
